@@ -2,16 +2,16 @@ BINARY := iommufd-device-plugin
 IMAGE ?= quay.io/vladikr/iommufd-device-plugin
 TAG ?= latest
 
-.PHONY: build docker-build docker-push test clean
+.PHONY: build image push test clean
 
 build:
 	CGO_ENABLED=0 go build -o $(BINARY) ./cmd/main.go
 
-docker-build:
-	docker build -t $(IMAGE):$(TAG) .
+image:
+	podman build -t $(IMAGE):$(TAG) .
 
-docker-push:
-	docker push $(IMAGE):$(TAG)
+push:
+	podman push $(IMAGE):$(TAG)
 
 test:
 	go test -v ./...
