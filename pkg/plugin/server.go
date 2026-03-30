@@ -36,6 +36,7 @@ const (
 // If /dev/iommu is absent, it returns a successful empty response so pods
 // are never rejected due to missing IOMMUFD support.
 type IOMMUFDDevicePlugin struct {
+	pluginapi.UnimplementedDevicePluginServer
 	devs         []*pluginapi.Device
 	server       *grpc.Server
 	socketPath   string
@@ -129,20 +130,17 @@ func (dp *IOMMUFDDevicePlugin) stopPlugin() {
 	}
 	dp.server.Stop()
 	dp.setInitialized(false)
-	dp.cleanup()
+	_ = dp.cleanup()
 }
 
 func (dp *IOMMUFDDevicePlugin) register() error {
-	ctx, cancel := context.WithTimeout(context.Background(), connectionTimeout)
-	defer cancel()
-	conn, err := grpc.DialContext(ctx, "unix://"+kubeletSocket,
+	conn, err := grpc.NewClient("unix://"+kubeletSocket,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 	)
 	if err != nil {
 		return fmt.Errorf("error connecting to kubelet: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client := pluginapi.NewRegistrationClient(conn)
 	req := &pluginapi.RegisterRequest{
@@ -160,7 +158,7 @@ func (dp *IOMMUFDDevicePlugin) GetDevicePluginOptions(_ context.Context, _ *plug
 }
 
 func (dp *IOMMUFDDevicePlugin) ListAndWatch(_ *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
-	s.Send(&pluginapi.ListAndWatchResponse{Devices: dp.devs})
+	_ = s.Send(&pluginapi.ListAndWatchResponse{Devices: dp.devs})
 
 	for {
 		select {
@@ -168,16 +166,14 @@ func (dp *IOMMUFDDevicePlugin) ListAndWatch(_ *pluginapi.Empty, s pluginapi.Devi
 			for _, dev := range dp.devs {
 				dev.Health = h
 			}
-			s.Send(&pluginapi.ListAndWatchResponse{Devices: dp.devs})
+			_ = s.Send(&pluginapi.ListAndWatchResponse{Devices: dp.devs})
 		case <-dp.stop:
 		case <-dp.done:
 		}
 
 		select {
 		case <-dp.stop:
-			break
 		case <-dp.done:
-			break
 		default:
 			continue
 		}
@@ -185,7 +181,7 @@ func (dp *IOMMUFDDevicePlugin) ListAndWatch(_ *pluginapi.Empty, s pluginapi.Devi
 	}
 
 	// Deregister by sending empty list
-	s.Send(&pluginapi.ListAndWatchResponse{Devices: []*pluginapi.Device{}})
+	_ = s.Send(&pluginapi.ListAndWatchResponse{Devices: []*pluginapi.Device{}})
 	close(dp.deregistered)
 	return nil
 }
@@ -229,7 +225,7 @@ func (dp *IOMMUFDDevicePlugin) Allocate(_ context.Context, r *pluginapi.Allocate
 		hostSocketPath, err := createIOMMUFDSocket(iommuFD, dp.socketDir, socketID)
 		if err != nil {
 			log.Printf("WARNING: failed to create IOMMUFD socket: %v", err)
-			unix.Close(iommuFD)
+			_ = unix.Close(iommuFD)
 			response.ContainerResponses = append(response.ContainerResponses, containerResponse)
 			continue
 		}
@@ -261,7 +257,7 @@ func (dp *IOMMUFDDevicePlugin) healthCheck() error {
 	if err != nil {
 		return fmt.Errorf("failed to create fsnotify watcher: %v", err)
 	}
-	defer watcher.Close()
+	defer func() { _ = watcher.Close() }()
 
 	// Watch /dev for iommu device appearance/disappearance
 	if err := watcher.Add("/dev"); err != nil {
@@ -293,9 +289,10 @@ func (dp *IOMMUFDDevicePlugin) healthCheck() error {
 			log.Printf("ERROR: watcher error: %v", err)
 		case event := <-watcher.Events:
 			if event.Name == iommuDevicePath {
-				if event.Op == fsnotify.Create {
+				switch event.Op {
+				case fsnotify.Create:
 					log.Printf("/dev/iommu appeared")
-				} else if event.Op == fsnotify.Remove || event.Op == fsnotify.Rename {
+				case fsnotify.Remove, fsnotify.Rename:
 					log.Printf("/dev/iommu disappeared")
 				}
 				// We intentionally do NOT change device health here.
@@ -332,12 +329,11 @@ func waitForGRPCServer(socketPath string, timeout time.Duration) error {
 	defer cancel()
 
 	for {
-		conn, err := grpc.DialContext(ctx, "unix://"+socketPath,
+		conn, err := grpc.NewClient("unix://"+socketPath,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithBlock(),
 		)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil
 		}
 		if ctx.Err() != nil {

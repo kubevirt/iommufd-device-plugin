@@ -26,7 +26,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: iommufd-device-plugin
-          image: quay.io/vladikr/iommufd-device-plugin:latest
+          image: quay.io/kubevirt/iommufd-device-plugin:latest
           args:
             - "-log-level=info"
             - "-socket-dir=/var/run/kubevirt/fd-sockets"

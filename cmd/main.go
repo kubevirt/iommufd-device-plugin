@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/vladikr/iommufd-device-plugin/pkg/plugin"
+	"kubevirt.io/iommufd-device-plugin/pkg/plugin"
 )
 
 func main() {

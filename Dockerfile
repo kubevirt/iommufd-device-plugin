@@ -1,22 +1,19 @@
+FROM golang:1.24 AS builder
+
+ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 
-FROM --platform=linux/${TARGETARCH} golang:1.22-alpine AS builder
-
-RUN apk add --no-cache ca-certificates
-
-ARG TARGETARCH=amd64
-ENV GOARCH=${TARGETARCH}
-
-WORKDIR /src
+WORKDIR /workspace
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /iommufd-device-plugin ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -o iommufd-device-plugin ./cmd/main.go
 
-FROM --platform=linux/${TARGETARCH} alpine:latest
-RUN apk add --no-cache ca-certificates
-COPY --from=builder /iommufd-device-plugin /iommufd-device-plugin
+FROM gcr.io/distroless/static:nonroot
+WORKDIR /
+COPY --from=builder /workspace/iommufd-device-plugin .
+USER 65532:65532
 
 ENTRYPOINT ["/iommufd-device-plugin"]
 CMD ["-log-level=info"]
