@@ -1,4 +1,4 @@
-module github.com/vladikr/iommufd-device-plugin
+module kubevirt.io/iommufd-device-plugin
 
 go 1.22.0
 
