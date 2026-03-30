@@ -27,7 +27,7 @@ const (
 	// Defined in Linux uAPI as _IO(IOMMUFD_TYPE, IOMMUFD_CMD_OPTION)
 	// where IOMMUFD_TYPE = ';' (0x3B) and IOMMUFD_CMD_OPTION = 0x87.
 	//
-	//nolint:stylecheck,revive
+	//nolint:revive
 	IOMMU_OPTION = 0x3B87
 )
 
@@ -81,7 +81,7 @@ func openAndConfigureIOMMUFD(socketDir string, uniqueID string) (int, error) {
 		uintptr(unsafe.Pointer(&option)),
 	)
 	if errno != 0 {
-		unix.Close(fd)
+		_ = unix.Close(fd)
 		return -1, fmt.Errorf("IOMMU_OPTION ioctl failed: %v", errno)
 	}
 
@@ -101,12 +101,12 @@ func openUnprivilegedIOMMUFD(socketDir string, uniqueID string) (int, error) {
 
 	// Create temporary char device node inside the socket dir
 	tmpNodePath := filepath.Join(socketDir, fmt.Sprintf("iommu-tmp-%s.dev", uniqueID))
-	os.Remove(tmpNodePath)
+	_ = os.Remove(tmpNodePath)
 
 	if err := unix.Mknod(tmpNodePath, unix.S_IFCHR|0600, int(stat.Rdev)); err != nil {
 		return -1, fmt.Errorf("mknod failed for temporary iommu node: %w", err)
 	}
-	defer os.Remove(tmpNodePath)
+	defer func() { _ = os.Remove(tmpNodePath) }()
 
 	// Relabel the temporary node so the FD carries a container-friendly context
 	if err := relabelPath(tmpNodePath); err != nil {
@@ -121,7 +121,7 @@ func openUnprivilegedIOMMUFD(socketDir string, uniqueID string) (int, error) {
 
 	// Extract the raw FD
 	fd, err := unix.Dup(int(f.Fd()))
-	f.Close()
+	_ = f.Close()
 	if err != nil {
 		return -1, fmt.Errorf("dup failed: %w", err)
 	}
@@ -142,7 +142,7 @@ func createIOMMUFDSocket(iommuFD int, socketDir string, uniqueID string) (string
 	hostSocketPath := filepath.Join(socketDir, fmt.Sprintf("iommufd-%s.sock", uniqueID))
 
 	// Remove stale socket file if it exists
-	os.Remove(hostSocketPath)
+	_ = os.Remove(hostSocketPath)
 
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: hostSocketPath, Net: "unix"})
 	if err != nil {
@@ -151,15 +151,15 @@ func createIOMMUFDSocket(iommuFD int, socketDir string, uniqueID string) (string
 
 	// Allow virt-launcher to connect
 	if err := os.Chmod(hostSocketPath, 0666); err != nil {
-		listener.Close()
-		os.Remove(hostSocketPath)
+		_ = listener.Close()
+		_ = os.Remove(hostSocketPath)
 		return "", fmt.Errorf("failed to chmod socket %s: %w", hostSocketPath, err)
 	}
 
 	// Relabel the socket file itself
 	if err := relabelPath(hostSocketPath); err != nil {
-		listener.Close()
-		os.Remove(hostSocketPath)
+		_ = listener.Close()
+		_ = os.Remove(hostSocketPath)
 		return "", fmt.Errorf("failed to relabel socket: %w", err)
 	}
 
@@ -167,9 +167,9 @@ func createIOMMUFDSocket(iommuFD int, socketDir string, uniqueID string) (string
 
 	// One-shot goroutine: accept one connection, send FD, clean up
 	go func() {
-		defer listener.Close()
-		defer os.Remove(hostSocketPath)
-		defer unix.Close(iommuFD)
+		defer func() { _ = listener.Close() }()
+		defer func() { _ = os.Remove(hostSocketPath) }()
+		defer func() { _ = unix.Close(iommuFD) }()
 
 		// Set deadline to prevent goroutine leak if client never connects
 		if err := listener.SetDeadline(time.Now().Add(socketAcceptTimeout)); err != nil {
@@ -182,7 +182,7 @@ func createIOMMUFDSocket(iommuFD int, socketDir string, uniqueID string) (string
 			log.Printf("ERROR: IOMMUFD socket accept failed: %v", err)
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		log.Printf("IOMMUFD connection accepted, sending FD %d", iommuFD)
 
