@@ -52,6 +52,22 @@ image-push-multiarch: image-build-multiarch
 image-manifest: image-push-multiarch
 	hack/push-container-manifest.sh
 
+.PHONY: cluster-up
+cluster-up:
+	scripts/kubevirtci.sh up
+
+.PHONY: cluster-down
+cluster-down:
+	scripts/kubevirtci.sh down
+
+.PHONY: cluster-sync
+cluster-sync:
+	scripts/kubevirtci.sh sync
+
+.PHONY: functest
+functest:
+	KUBECONFIG=$$(scripts/kubevirtci.sh kubeconfig) go test ./tests/... -v -count=1 -timeout 20m $(FUNC_TEST_ARGS)
+
 .PHONY: clean
 clean:
-	rm -rf iommufd-device-plugin _bin
+	rm -rf iommufd-device-plugin _bin _kubevirt
