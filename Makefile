@@ -1,29 +1,57 @@
-BINARY := iommufd-device-plugin
-IMAGE ?= quay.io/vladikr/iommufd-device-plugin
-TAG ?= latest
-ARCH ?= amd64
+CONTAINER_ENGINE ?= $(shell KUBEVIRT_CRI=$${KUBEVIRT_CRI} hack/container-engine.sh)
+DOCKER_PREFIX ?= quay.io/kubevirt
+IMAGE_NAME ?= iommufd-device-plugin
+DOCKER_TAG ?= latest
+IMG ?= $(DOCKER_PREFIX)/$(IMAGE_NAME):$(DOCKER_TAG)
 
-.PHONY: build image push test clean
+# Version of golangci-lint to install
+GOLANGCI_LINT_VERSION ?= v2.10.1
 
+# Location to install local binaries to
+LOCALBIN ?= $(PWD)/_bin
+$(LOCALBIN):
+	mkdir -p $(LOCALBIN)
+export PATH := $(LOCALBIN):$(PATH)
+
+.PHONY: build
 build:
-	CGO_ENABLED=0 GOARCH=$(ARCH) go build -o $(BINARY) ./cmd/main.go
+	CGO_ENABLED=0 go build -o iommufd-device-plugin ./cmd/main.go
 
-image:
-	podman build --build-arg TARGETARCH=$(ARCH) --platform linux/$(ARCH) -t $(IMAGE):$(TAG)-$(ARCH) .
-
-push:
-	podman push $(IMAGE):$(TAG)-$(ARCH)
-
-manifest:
-	podman manifest create $(IMAGE):$(TAG)
-	podman manifest add $(IMAGE):$(TAG) $(IMAGE):$(TAG)-amd64
-	podman manifest add $(IMAGE):$(TAG) $(IMAGE):$(TAG)-arm64
-
-manifest-push:
-	podman manifest push $(IMAGE):$(TAG) docker://$(IMAGE):$(TAG)
-
+.PHONY: test
 test:
-	go test -v ./...
+	go test ./pkg/... -v -count=1
 
+.PHONY: lint
+lint: golangci-lint
+	go vet ./...
+	golangci-lint run ./...
+
+GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
+.PHONY: golangci-lint
+golangci-lint: $(GOLANGCI_LINT)
+$(GOLANGCI_LINT): $(LOCALBIN)
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
+
+.PHONY: image-build
+image-build:
+	$(CONTAINER_ENGINE) build -t $(IMG) .
+
+.PHONY: image-push
+image-push:
+	$(CONTAINER_ENGINE) push $(IMG)
+
+.PHONY: image-build-multiarch
+image-build-multiarch:
+	hack/build-multiarch.sh
+
+.PHONY: image-push-multiarch
+image-push-multiarch: image-build-multiarch
+	hack/push-multiarch.sh
+
+.PHONY: image-manifest
+image-manifest: image-push-multiarch
+	hack/push-container-manifest.sh
+
+.PHONY: clean
 clean:
-	rm -f $(BINARY)
+	rm -rf iommufd-device-plugin _bin

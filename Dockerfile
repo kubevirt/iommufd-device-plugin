@@ -1,10 +1,13 @@
+ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 
-FROM --platform=linux/${TARGETARCH} golang:1.22-alpine AS builder
+FROM --platform=${TARGETOS}/${TARGETARCH} golang:1.22-alpine AS builder
 
 RUN apk add --no-cache ca-certificates
 
+ARG TARGETOS=linux
 ARG TARGETARCH=amd64
+ENV GOOS=${TARGETOS}
 ENV GOARCH=${TARGETARCH}
 
 WORKDIR /src
