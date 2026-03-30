@@ -36,6 +36,7 @@ const (
 // If /dev/iommu is absent, it returns a successful empty response so pods
 // are never rejected due to missing IOMMUFD support.
 type IOMMUFDDevicePlugin struct {
+	pluginapi.UnimplementedDevicePluginServer
 	devs         []*pluginapi.Device
 	server       *grpc.Server
 	socketPath   string
@@ -133,11 +134,8 @@ func (dp *IOMMUFDDevicePlugin) stopPlugin() {
 }
 
 func (dp *IOMMUFDDevicePlugin) register() error {
-	ctx, cancel := context.WithTimeout(context.Background(), connectionTimeout)
-	defer cancel()
-	conn, err := grpc.DialContext(ctx, "unix://"+kubeletSocket,
+	conn, err := grpc.NewClient("unix://"+kubeletSocket,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 	)
 	if err != nil {
 		return fmt.Errorf("error connecting to kubelet: %v", err)
@@ -331,9 +329,8 @@ func waitForGRPCServer(socketPath string, timeout time.Duration) error {
 	defer cancel()
 
 	for {
-		conn, err := grpc.DialContext(ctx, "unix://"+socketPath,
+		conn, err := grpc.NewClient("unix://"+socketPath,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithBlock(),
 		)
 		if err == nil {
 			_ = conn.Close()
