@@ -71,7 +71,7 @@ function kubevirtci::sync() {
     kubeconfig=$(kubevirtci::kubeconfig)
 
     echo "Deploying iommufd-device-plugin DaemonSet..."
-    sed "s|quay.io/vladikr/iommufd-device-plugin:latest|${img}|" \
+    sed "s|quay.io/kubevirt/iommufd-device-plugin:latest|${img}|" \
         "${_base_dir}/deploy/daemonset.yaml" | \
         KUBECONFIG="${kubeconfig}" ${_kubectl} apply -f -
     KUBECONFIG="${kubeconfig}" ${_kubectl} rollout status daemonset/iommufd-device-plugin \
