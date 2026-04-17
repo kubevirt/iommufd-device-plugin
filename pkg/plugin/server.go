@@ -272,6 +272,12 @@ func (dp *IOMMUFDDevicePlugin) healthCheck() error {
 		log.Printf("/dev/iommu is not present (plugin will still accept allocations)")
 	}
 
+	// This allows us to detect when kubelet removes the socket on restart (event.Name == dp.socketPath),
+	// so we can exit and trigger re-registration.
+	if dp.socketPath == "" {
+		return fmt.Errorf("device-plugin socket path is empty, kubelet restart detection will not work")
+	}
+
 	// Watch device plugin socket directory
 	socketDir := filepath.Dir(dp.socketPath)
 	if err := watcher.Add(socketDir); err != nil {
